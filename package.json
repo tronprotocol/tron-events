@@ -1,0 +1,23 @@
+{
+  "name": "tron-proxy",
+  "version": "0.0.1",
+  "description": "A minimalist proxy for a Tron private network",
+  "main": "index.js",
+  "repository": "https://github.com/tronprotocol/docker-tron-quickstart",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node ."
+  },
+  "author": "Francesco Sullo <francesco@sullo.co>",
+  "license": "MIT",
+  "dependencies": {
+    "bluebird": "^3.5.3",
+    "body-parser": "^1.18.3",
+    "chalk": "^2.4.1",
+    "express": "^4.16.3",
+    "lodash": "^4.17.11",
+    "morgan": "^1.9.1",
+    "pg": "^7.6.1",
+    "redis": "^2.8.0"
+  }
+}
