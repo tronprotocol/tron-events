@@ -1,9 +1,9 @@
 {
-  "name": "tron-proxy",
+  "name": "tron-events",
   "version": "0.0.1",
-  "description": "A minimalist proxy for a Tron private network",
+  "description": "An Infura for Tron",
   "main": "index.js",
-  "repository": "https://github.com/tronprotocol/docker-tron-quickstart",
+  "repository": "https://github.com/tronprotocol/tron-events",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node ."

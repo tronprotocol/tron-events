@@ -65,9 +65,66 @@ class Db {
     try {
       this.pg = new Client(config.pg)
       this.pg.connect()
+      this.initPg()
     } catch (e) {
+      console.error(e)
       console.error('PostgreSQL connection failed.')
     }
+  }
+
+  async initPg() {
+
+    const log = ['Initiate database if not already initiated.']
+
+    let result = await this.pg.query('select datname from pg_database;')
+    let found = false
+    for (let row of result.rows) {
+      if (row.datname === 'events') {
+        found = true
+        log.push('Database events already exists.')
+        break
+      }
+    }
+
+    if (!found) {
+      await this.pg.query('create database events;')
+      log.push('Database events created.')
+
+    }
+
+    result = await this.pg.query('select * from pg_catalog.pg_tables;')
+
+    found = false
+    for (let row of result.rows) {
+      if (row.tablename === 'events_log') {
+        found = true
+        log.push('Table events_log already exists')
+        break
+      }
+    }
+
+    if (!found) {
+      await this.pg.query('create table events_log (' +
+          'id serial primary key,' +
+          'block_number integer not null,' +
+          'block_timestamp integer not null,' +
+          'contract_address varchar(34) not null,' +
+          'event_index integer,' +
+          'event_name  text not null,' +
+          'result json not null,' +
+          'result_type json not null,' +
+          'transaction_id varchar(64) not null,' +
+          'resource_Node varchar(20) not null' +
+          ');')
+      log.push('Table events_log created')
+      for (let col of 'block_number|contract_address|event_name|transaction_id'.split('|')) {
+        await this.pg.query(`create unique index ${col}_idx on events_log (${col});`)
+        log.push(`Index ${col}_idx set`)
+      }
+    }
+
+    console.log(log.join('\n'))
+
   }
 
   keys() {
@@ -91,16 +148,15 @@ class Db {
       contract_address: 'a',
       event_index: 'i',
       event_name: 'n',
-      result : 'r',
+      result: 'r',
       result_type: 'e',
       transaction_id: 'x',
       resource_Node: 's'
     }
   }
 
-  compress(eventData, exclude = '') {
-    exclude = exclude.split('|')
-    const compressed  = {}
+  compress(eventData, exclude = []) {
+    const compressed = {}
     const inverseKeys = this.inversKeys()
     for (let k in inversKeys) {
       if (!exclude[k]) {
@@ -111,7 +167,7 @@ class Db {
   }
 
   uncompress(compressedData) {
-    const expanded  = {}
+    const expanded = {}
     const keys = this.keys()
     for (let k in keys) {
       expanded[keys[k]] = compressedData[k]
@@ -119,12 +175,65 @@ class Db {
     return expanded
   }
 
-  async saveEvent(eventData) {
-    return Promise.all([
-      this.redis.hsetAsync(`x:${eventData.transaction_id}`, `${eventData.event_name}:${eventData.event_index}`, this.compress(eventData,'transaction_id|event_name|event_index')),
-      this.redis.hsetAsync(`c:${eventData.contract_address}`, `${eventData.event_name}:${eventData.block_number}:${eventData.event_index}`, this.compress(eventData, 'contract_address|event_name|block_number|event_index'))
+  formatKey(eventData, keys) {
+    let key = ''
+    for (let k in keys) {
+      key += (key ? ':' : '') + eventData[k]
+    }
+    return key
+  }
 
+  async saveEvent(eventData) {
+
+    // caching by transaction_id
+
+    const txKey = this.formatKey(eventData, ['transaction_id'])
+    const subKey = this.formatKey(eventData, ['event_name', 'event_index'])
+    const txData = this.compress(eventData, ['transaction_id', 'event_name', 'event_index'])
+    const txRedisPromise = this.redis.hsetAsync(
+        txKey,
+        subKey,
+        txData
+    ).then(() => this.redis.expireAsync(txKey, 3600))
+
+    // caching by contract_address and block_number
+
+    const cKey = this.formatKey(eventData, ['contract_address', 'block_number'])
+    let cData = this.compress(eventData, ['contract_address', 'block_number', 'event_name', 'event_index'])
+    const cRedisPromise = this.redis.hsetAsync(
+        cKey,
+        subKey,
+        cData
+    ).then(() => this.redis.expireAsync(cKey, 3600))
+
+    // saving to PostgreSQL
+
+    const text = 'INSERT INTO events_log(block_number, block_timestamp, contract_address, event_index, event_name, result, result_type, transaction_id, resource_Node) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *'
+    const values = []
+    for (let key in this.inversKeys()) {
+      values.push(eventData[key])
+    }
+
+    const pgPromise = client.query(text, values)
+
+    return Promise.all([
+      txRedisPromise,
+      cRedisPromise,
+      pgPromise
     ])
+  }
+
+  async getEventByTxID(eventData) {
+
+    // caching by transaction_id
+
+    const txKey = this.formatKey(eventData, ['transaction_id'])
+    const txRedisPromise = this.redis.hsetAsync(
+        txKey,
+        subKey,
+        txData
+    ).then(() => this.redis.expireAsync(txKey, 3600))
+
   }
 }
 
