@@ -41,6 +41,7 @@ app.use('/', function (req,res) {
 
 app.listen(8060);
 
+exports.app = app
 
 const n = "\n"
 

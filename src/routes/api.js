@@ -10,6 +10,14 @@ router.get('/', async function (req, res) {
   })
 })
 
+router.get('/init', async function (req,res) {
+  const log = await db.initPg()
+  res.json({
+    success: true,
+    log
+  })
+})
+
 router.post('/events', async function (req, res) {
 
   let key = req.body.key
