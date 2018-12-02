@@ -2,16 +2,16 @@ const chai = require('chai')
 
 const _ = require('lodash')
 const assert = chai.assert
-const wait = require('../helpers/wait')
-const tools = require('../helpers/tools')
-const jlog = require('../helpers/jlog')
+const wait = require('../../helpers/wait')
+const tools = require('../../helpers/tools')
+const jlog = require('../../helpers/jlog')
 
-const txs = require('../fixtures/incomingTransactions')
+const txs = require('../../fixtures/incomingTransactions')
 for (let j=0;j<txs.length;j++) {
   txs[j].raw_data = {}
 }
 
-const events = require('../fixtures/events')
+const events = require('../../fixtures/events')
 
 describe('db', function () {
 
@@ -22,7 +22,7 @@ describe('db', function () {
 
     process.env.cacheDuration = 2
 
-    db = require('../../src/utils/db')
+    db = require('../../../src/utils/db')
     await db.initPg()
     await db.pg.query('truncate events_log')
 
@@ -217,25 +217,25 @@ describe('db', function () {
     })
   })
 
-  describe('getEventByTxID', function () {
+  describe('getEventByTxIDFromCache', function () {
 
     it('should cache uncompressed events and retrieve them by txid', async function () {
       await db.cacheEventByTxId(txs[8])
-      const result = await db.getEventByTxID(txs[8].transaction_id)
+      const result = await db.getEventByTxIDFromCache(txs[8].transaction_id)
       assert.isTrue(tools.txEqual(txs[8], JSON.parse(result)[0]))
     })
 
     it('should cache compressed events and retrieve them by txid', async function () {
       await db.cacheEventByTxId(txs[9], true)
-      const result = await db.getEventByTxID(txs[9].transaction_id, true)
+      const result = await db.getEventByTxIDFromCache(txs[9].transaction_id, true)
       assert.isTrue(tools.txEqual(txs[9], JSON.parse(result)[0]))
     })
 
     it('should cache compressed and uncompressed events and verify that they are identical', async function () {
       await db.cacheEventByTxId(txs[8])
-      let result1 = await db.getEventByTxID(txs[8].transaction_id)
+      let result1 = await db.getEventByTxIDFromCache(txs[8].transaction_id)
       await db.cacheEventByTxId(txs[8], true)
-      let result2 = await db.getEventByTxID(txs[8].transaction_id, true)
+      let result2 = await db.getEventByTxIDFromCache(txs[8].transaction_id, true)
       console.log(result1)
       console.log(result2)
       assert.isTrue(tools.txEqual(JSON.parse(result1), JSON.parse(result2)))

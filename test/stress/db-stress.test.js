@@ -96,7 +96,7 @@ describe('db', function () {
       promises = []
       d = Date.now()
       for (let i = 0; i < events.length; i++) {
-        promises.push(db.getEventByTxID(events[i].transaction_id))
+        promises.push(db.getEventByTxIDFromCache(events[i].transaction_id))
         // console.log(result)
       }
       await Promise.all(promises)
@@ -135,7 +135,7 @@ describe('db', function () {
       promises = []
       d = Date.now()
       for (let i = 0; i < events.length; i++) {
-        promises.push(db.getEventByTxID(events[i].transaction_id), true)
+        promises.push(db.getEventByTxIDFromCache(events[i].transaction_id), true)
         // console.log(result)
       }
       await Promise.all(promises)

@@ -1,6 +1,7 @@
 const bluebird = require('bluebird')
 const redis = require('redis')
 const _ = require('lodash')
+const {keccak256} = require('js-sha3');
 
 const config = require('../config')
 const {Client} = require('pg')
@@ -116,14 +117,15 @@ class Db {
           'result_type json not null,' +
           'transaction_id varchar(64) not null,' +
           'resource_Node varchar(20) not null,' +
-          'raw_data json not null' +
+          'raw_data json not null,' +
+          'hash varchar(16) not null' +
           ');')
       log.push('Table events_log created')
       for (let col of 'block_number|contract_address|event_name|transaction_id'.split('|')) {
         await this.pg.query(`create index ${col}_idx on events_log (${col});`)
         log.push(`Index ${col}_idx set.`)
       }
-      await this.pg.query('create unique index event_idx on events_log (block_number,contract_address,event_name, transaction_id);')
+      await this.pg.query('create unique index event_idx on events_log (block_number, contract_address, event_name, event_index, transaction_id);')
     }
     return Promise.resolve(log)
   }
@@ -211,12 +213,17 @@ class Db {
     ).then(() => this.redis.expireAsync(key, process.env.cacheDuration || 3600))
   }
 
-  async cacheEventByContractAddress(eventData, compressed) {
-    const key = this.formatKey(eventData, ['contract_address', 'block_number'])
-    const subKey = this.formatKey(eventData, ['event_name', 'event_index'])
+  hashEvent(eventData) {
+    return keccak256(eventData.contract_address + eventData.transaction_id + eventData.event_name + eventData.event_index).toString().substring(16)
+  }
+
+  async cacheEventByContractAddress(eventData, h, compressed) {
+    const key = this.formatKey(eventData, ['contract_address', 'event_name', 'block_number'])
+    const subKey = this.formatKey(eventData, ['event_index'])
     const data = compressed
         ? JSON.stringify(this.compress(eventData, ['contract_address', 'block_number', 'event_name', 'event_index']))
         : JSON.stringify(eventData)
+    data.h = h || this.hashEvent(eventData)
     return this.redis.hsetAsync(
         key,
         subKey,
@@ -226,13 +233,18 @@ class Db {
 
   async saveEvent(eventData, options = {}) {
 
-    const text = 'INSERT INTO events_log(block_number, block_timestamp, contract_address, event_index, event_name, result, result_type, transaction_id, resource_Node, raw_data) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *'
+    // TODO handle events from fullNode and confirmed events from solidityNode
+
+    const h = this.hashEvent(eventData)
+
+    const text = 'INSERT INTO events_log(block_number, block_timestamp, contract_address, event_index, event_name, result, result_type, transaction_id, resource_Node, raw_data, hash) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *'
 
     const values = Object.keys(this.toCompressedKeys()).map(elem => eventData[elem])
+    values.push(h)
 
     return Promise.all([
       options.onlyPg ? null : this.cacheEventByTxId(eventData, options.compressed),
-      options.onlyPg ? null : this.cacheEventByContractAddress(eventData, options.compressed),
+      options.onlyPg ? null : this.cacheEventByContractAddress(eventData, h, options.compressed),
       options.onlyRedis ? null : this.pg.query(text, values)
           .catch(err => {
             if (/duplicate key/.test(err.message)) {
@@ -243,25 +255,100 @@ class Db {
     ])
   }
 
-  async getEventByTxID(txId, isCompressed) {
+  async getEventByTxIDFromCache(txId, isCompressed) {
 
-    return this.redis.hgetallAsync(`${txId}`)
-        .then(data => {
-          const result = []
-          for (let key in data) {
-            let event = data[key]
-            if (isCompressed) {
-              event = this.uncompress(event)
-              event.transaction_id = txId
-              key = key.split(':')
-              event.event_name = key[0]
-              event.event_index = parseInt(key[1])
-              event = JSON.stringify(event)
-            }
-            result.push(event)
+    let data = await this.redis.hgetallAsync(`${txId}`)
+    let lastHash
+    if (data) {
+      const result = []
+      for (let key in data) {
+        let event = data[key]
+        if (isCompressed) {
+          event = this.uncompress(event)
+          event.transaction_id = txId
+          key = key.split(':')
+          event.event_name = key[0]
+          event.event_index = parseInt(key[1])
+        }
+        result.push(event)
+      }
+      return Promise.resolve({events: result.join(',')})
+    } else {
+      return this.getEventByTxIDFromDB(txId, isCompressed)
+    }
+  }
+
+  async getEventByTxIDFromDB(txId) {
+
+    let eventData = await this.pg.query('select * from events_log where transaction_id = $1;', [txId]).rows[0]
+    // Should we cache it?
+    // this.cacheEventByTxId(eventData, options.compressed)
+    return Promise.resolve(eventData)
+
+  }
+
+  async getEventByContractAddressFromCache(address, blockNumber, eventName, size = 20, previousLast, isCompressed) {
+
+    let keys = await this.redis.keys(`${address}:${blockNumber || '*' }:${eventName || '*'}`)
+    keys.sort(this.sortKeysByBlockNumberDescent)
+    const result = []
+    let count = -1
+    let nextLast = previousLast
+    let started = false
+    for (let i = 0; i < key.length; i++) {
+      let events = await this.redis.hgetallAsync(key[i])
+      for (let eventIndex in events) {
+        count++
+        let event = events[eventIndex]
+        if (!started) {
+          if (!previousLast) {
+            started = true
+          } else if (previousLast === event.h) {
+            started = true
+            continue
+          } else {
+            continue
           }
-          return Promise.resolve(`[${result.join(',')}]`)
-        })
+        }
+        if (isCompressed) {
+          let [ca, bn, en] = key.split(':')
+          event = this.uncompress(event)
+          event.contract_address = ca
+          event.block_number = bn
+          event.event_name = en
+          event.event_index = eventIndex
+          nextLast = event.h
+          delete event.h
+        }
+        result.push(event)
+        if (count >= startAt + size) {
+          break
+        }
+      }
+      if (count < size) {
+        let moreResult = this.getEventByContractAddressFromDB(address, blockNumber, eventName, size - count, nextLast)
+      }
+    }
+    return Promise.resolve({ events: result, lastEvent: nextLast })
+  }
+
+  async getEventByContractAddressFromDB(address, blockNumber, eventName, size, nextLast, isCompressed) {
+    let text = 'select * from events_log where contract_address = $1'
+    let values = [ contract_address]
+    if (blockNumber) {
+      text += ' and block_number = $2 '
+      values.push(blockNumber)
+    }
+    if (eventName) {
+      text += ' and event_name = $' + (blockNumber ? 3 : 2)
+      values.push(eventName)
+    }
+
+    let eventsData = await this.pg.query(text, values)
+    // TODO find the data, optimize starting from some column
+
+    return Promise.resolve(eventData)
+
   }
 
 }

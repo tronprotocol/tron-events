@@ -43,7 +43,7 @@ router.post('/events', auth, async function (req, res) {
 router.get('/events/transaction/:id', async function (req, res) {
 
   try {
-    const result = await db.getEventByTxID(req.params.id)
+    const result = await db.getEventByTxIDFromCache(req.params.id)
     res.json({
       success: true,
       result
