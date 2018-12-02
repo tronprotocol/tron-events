@@ -172,6 +172,9 @@ class Db {
   uncompress(compressedData) {
     const expanded = {}
     const keys = this.toExpandedKeys()
+    if (typeof compressedData === 'string') {
+      compressedData = JSON.parse(compressedData)
+    }
     for (let k in keys) {
       expanded[keys[k]] = compressedData[k]
     }
@@ -186,7 +189,7 @@ class Db {
     return key
   }
 
-  sortKeysByBlockNumberDescent(a,b) {
+  sortKeysByBlockNumberDescent(a, b) {
     const A = parseInt(a.split(':')[1])
     const B = parseInt(b.split(':')[1])
     if (A < B) return 1;
@@ -200,6 +203,7 @@ class Db {
     const data = compressed
         ? JSON.stringify(this.compress(eventData, ['transaction_id', 'event_name', 'event_index']))
         : JSON.stringify(eventData)
+    !process.env.total || (process.env.total = parseInt(process.env.total) + data.length)
     return this.redis.hsetAsync(
         key,
         subKey,
@@ -220,16 +224,16 @@ class Db {
     ).then(() => this.redis.expireAsync(key, process.env.cacheDuration || 3600))
   }
 
-  async saveEvent(eventData) {
+  async saveEvent(eventData, options = {}) {
 
     const text = 'INSERT INTO events_log(block_number, block_timestamp, contract_address, event_index, event_name, result, result_type, transaction_id, resource_Node, raw_data) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *'
 
     const values = Object.keys(this.toCompressedKeys()).map(elem => eventData[elem])
 
     return Promise.all([
-      this.cacheEventByTxId(eventData),
-      this.cacheEventByContractAddress(eventData),
-      this.pg.query(text, values)
+      options.onlyPg ? null : this.cacheEventByTxId(eventData, options.compressed),
+      options.onlyPg ? null : this.cacheEventByContractAddress(eventData, options.compressed),
+      options.onlyRedis ? null : this.pg.query(text, values)
           .catch(err => {
             if (/duplicate key/.test(err.message)) {
               return Promise.resolve()
@@ -239,18 +243,27 @@ class Db {
     ])
   }
 
-  async getEventByTxID(txId) {
+  async getEventByTxID(txId, isCompressed) {
 
-    return this.redis.hgetallAsync(txKey).then(data => {
-      if (data) {
-      } else {
-        // not cached
-
-      }
-
-    })
-
+    return this.redis.hgetallAsync(`${txId}`)
+        .then(data => {
+          const result = []
+          for (let key in data) {
+            let event = data[key]
+            if (isCompressed) {
+              event = this.uncompress(event)
+              event.transaction_id = txId
+              key = key.split(':')
+              event.event_name = key[0]
+              event.event_index = parseInt(key[1])
+              event = JSON.stringify(event)
+            }
+            result.push(event)
+          }
+          return Promise.resolve(`[${result.join(',')}]`)
+        })
   }
+
 }
 
 module.exports = new Db

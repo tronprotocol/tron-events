@@ -1,3 +1,6 @@
+const _ = require('lodash')
+const jlog = require('./jlog')
+
 const fields = [
   'block_number',
   'block_timestamp',
@@ -26,6 +29,23 @@ class Tools {
       }
     }
     return JSON.stringify(event)
+  }
+
+  txEqual(a, b) {
+    for (let field of fields) {
+      if (!!~jsonFields[field]) {
+        if (!_.isEqual(a[field], b[field])) {
+          jlog(['error', a[field], b[field]])
+          return false
+        }
+      } else {
+        if (a[field] !== b[field]) {
+          jlog(['error', a[field], b[field]])
+          return false
+        }
+      }
+    }
+    return true
   }
 
 }

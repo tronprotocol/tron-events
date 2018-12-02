@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const utils = require('../utils')
 const db = require('../utils/db')
+const auth = require('../utils/auth')
 
 router.get('/', async function (req, res) {
   res.json({
@@ -10,7 +11,7 @@ router.get('/', async function (req, res) {
   })
 })
 
-router.get('/init', async function (req,res) {
+router.get('/init', auth, async function (req,res) {
   const log = await db.initPg()
   res.json({
     success: true,
@@ -18,7 +19,7 @@ router.get('/init', async function (req,res) {
   })
 })
 
-router.post('/events', async function (req, res) {
+router.post('/events', auth, async function (req, res) {
 
   let key = req.body.key
   let eventData = req.body.data
