@@ -17,7 +17,7 @@ describe('db', function () {
 
     process.env.cacheDuration = 2
 
-    db = require('../../src/utils/db')
+    db = require('../../src/db')
     await db.initPg()
     await db.pg.query('truncate events_log')
 
@@ -77,7 +77,7 @@ describe('db', function () {
 
     it('should write ~20,000 events and retrieve them by txid, writing only in Redis', async function () {
 
-      process.env.total = 0
+      process.env.totalMemoryUsedDuringTesting = 0
       this.timeout(60000)
 
       d = Date.now()
@@ -109,14 +109,14 @@ describe('db', function () {
           })
 
 
-      console.log('Total space in memory', process.env.total)
+      console.log('Total space in memory', process.env.totalMemoryUsedDuringTesting)
 
     })
 
 
     it('should write ~20,000 compressed events and retrieve them by txid, writing only in Redis', async function () {
 
-      process.env.total = 0
+      process.env.totalMemoryUsedDuringTesting = 0
       this.timeout(60000)
 
       d = Date.now()
@@ -147,7 +147,7 @@ describe('db', function () {
             console.log('Reading time', Date.now() - d, 'ms')
           })
 
-      console.log('Total space in memory', process.env.total)
+      console.log('Total space in memory', process.env.totalMemoryUsedDuringTesting)
     })
   })
 

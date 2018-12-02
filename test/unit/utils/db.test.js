@@ -22,7 +22,7 @@ describe.only('db', function () {
 
     process.env.cacheDuration = 2
 
-    db = require('../../../src/utils/db')
+    db = require('../../../src/db')
     await db.initPg()
     await db.pg.query('truncate events_log')
 

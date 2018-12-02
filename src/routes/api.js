@@ -1,7 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const utils = require('../utils')
-const db = require('../utils/db')
+const db = require('../db')
 const auth = require('../utils/auth')
 
 router.get('/', async function (req, res) {
