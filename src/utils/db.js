@@ -203,31 +203,31 @@ class Db {
     const key = this.formatKey(eventData, ['transaction_id'])
     const subKey = this.formatKey(eventData, ['event_name', 'event_index'])
     const data = compressed
-        ? JSON.stringify(this.compress(eventData, ['transaction_id', 'event_name', 'event_index']))
-        : JSON.stringify(eventData)
+        ? this.compress(eventData, ['transaction_id', 'event_name', 'event_index'])
+        : eventData
     !process.env.total || (process.env.total = parseInt(process.env.total) + data.length)
     return this.redis.hsetAsync(
         key,
         subKey,
-        data
+        JSON.stringify(data)
     ).then(() => this.redis.expireAsync(key, process.env.cacheDuration || 3600))
   }
 
   hashEvent(eventData) {
-    return keccak256(eventData.contract_address + eventData.transaction_id + eventData.event_name + eventData.event_index).toString().substring(16)
+    return keccak256(eventData.contract_address + eventData.transaction_id + eventData.event_name + eventData.event_index).toString().substring(0, 16)
   }
 
   async cacheEventByContractAddress(eventData, h, compressed) {
     const key = this.formatKey(eventData, ['contract_address', 'event_name', 'block_number'])
     const subKey = this.formatKey(eventData, ['event_index'])
     const data = compressed
-        ? JSON.stringify(this.compress(eventData, ['contract_address', 'block_number', 'event_name', 'event_index']))
-        : JSON.stringify(eventData)
+        ? this.compress(eventData, ['contract_address', 'block_number', 'event_name', 'event_index'])
+        : eventData
     data.h = h || this.hashEvent(eventData)
     return this.redis.hsetAsync(
         key,
         subKey,
-        data
+        JSON.stringify(data)
     ).then(() => this.redis.expireAsync(key, process.env.cacheDuration || 3600))
   }
 
@@ -241,6 +241,8 @@ class Db {
 
     const values = Object.keys(this.toCompressedKeys()).map(elem => eventData[elem])
     values.push(h)
+
+    console.log([].concat(values).slice(0,5))
 
     return Promise.all([
       options.onlyPg ? null : this.cacheEventByTxId(eventData, options.compressed),

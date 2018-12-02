@@ -13,7 +13,7 @@ for (let j=0;j<txs.length;j++) {
 
 const events = require('../../fixtures/events')
 
-describe('db', function () {
+describe.only('db', function () {
 
   let db
   const tx0 = txs[0]
@@ -166,8 +166,8 @@ describe('db', function () {
 
       await db.cacheEventByContractAddress(tx5)
 
-      const key = db.formatKey(tx5, ['contract_address', 'block_number'])
-      const subKey = db.formatKey(tx5, ['event_name', 'event_index'])
+      const key = db.formatKey(tx5, ['contract_address', 'event_name','block_number'])
+      const subKey = db.formatKey(tx5, [ 'event_index'])
 
       const ttl = await db.redis.ttlAsync(key)
       assert.equal(ttl, process.env.cacheDuration)
@@ -182,7 +182,7 @@ describe('db', function () {
 
   })
 
-  describe('saveEvent', function () {
+  describe.only('saveEvent', function () {
 
     it('should save a single event', async function () {
 
@@ -201,8 +201,10 @@ describe('db', function () {
 
       for (let i = 6; i < txs.length; i++) {
         if (txs[i].contract_address === contract_address) {
+
+          console.log('\n\n\n', txs[i])
           await db.saveEvent(txs[i])
-          ckeys[db.formatKey(txs[i], ['contract_address', 'block_number'])] = 1
+          ckeys[db.formatKey(txs[i], ['contract_address', 'event_name', 'block_number'])] = 1
         }
       }
 
@@ -222,13 +224,14 @@ describe('db', function () {
     it('should cache uncompressed events and retrieve them by txid', async function () {
       await db.cacheEventByTxId(txs[8])
       const result = await db.getEventByTxIDFromCache(txs[8].transaction_id)
-      assert.isTrue(tools.txEqual(txs[8], JSON.parse(result)[0]))
+      assert.isTrue(tools.txEqual(txs[8], result))
     })
 
     it('should cache compressed events and retrieve them by txid', async function () {
       await db.cacheEventByTxId(txs[9], true)
       const result = await db.getEventByTxIDFromCache(txs[9].transaction_id, true)
-      assert.isTrue(tools.txEqual(txs[9], JSON.parse(result)[0]))
+
+      assert.isTrue(tools.txEqual(txs[9], result[0]))
     })
 
     it('should cache compressed and uncompressed events and verify that they are identical', async function () {
@@ -238,7 +241,7 @@ describe('db', function () {
       let result2 = await db.getEventByTxIDFromCache(txs[8].transaction_id, true)
       console.log(result1)
       console.log(result2)
-      assert.isTrue(tools.txEqual(JSON.parse(result1), JSON.parse(result2)))
+      assert.isTrue(tools.txEqual(result1, result2))
     })
 
 

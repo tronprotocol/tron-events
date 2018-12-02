@@ -42,10 +42,14 @@ describe('db', function () {
         promises.push(db.saveEvent(events[i]))
       }
       console.log('Saving...')
-      await Promise.all(promises)
-          .then(() => {
-            console.log('Writing time', Date.now() - d, 'ms')
-          })
+      try {
+        await Promise.all(promises)
+            .then(() => {
+              console.log('Writing time', Date.now() - d, 'ms')
+            })
+      } catch(err) {
+        console.error(err)
+      }
     })
 
 
